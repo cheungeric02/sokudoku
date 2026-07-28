@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#33518C">
+<script>try{var _t=localStorage.getItem("jp_cpm_theme");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}</script>
 <title>速読 — Japanese Reading Speed Trainer</title>
 <style>
   :root{
@@ -78,6 +79,12 @@
   .toggle input:checked + .track{background:var(--accent);}
   .toggle input:checked + .track::after{transform:translateX(16px);}
   .toggle input:focus-visible + .track{outline:2px solid var(--accent);outline-offset:2px;}
+
+  .theme-btn{width:36px;height:36px;flex:none;display:grid;place-items:center;padding:0;
+    border:1px solid var(--border);border-radius:9px;background:var(--surface-2);
+    color:var(--text);font-size:16px;line-height:1;cursor:pointer;transition:border-color .15s;}
+  .theme-btn:hover{border-color:var(--muted);}
+  .theme-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 
   /* Reader */
   .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
@@ -333,6 +340,7 @@
         <span class="track"></span>
         Furigana
       </label>
+      <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle light or dark mode">☾</button>
     </div>
   </header>
 
@@ -1026,6 +1034,24 @@ $("syncToggle").onclick=()=>{
 };
 $("copyCode").onclick=copyCode;
 $("restoreCode").onclick=restoreCode;
+function currentTheme(){
+  const t=document.documentElement.getAttribute("data-theme");
+  if(t)return t;
+  return (window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";
+}
+function applyThemeIcon(){
+  const dark=currentTheme()==="dark";
+  const b=$("themeBtn");
+  b.textContent=dark?"☀":"☾";
+  b.setAttribute("aria-label",dark?"Switch to light mode":"Switch to dark mode");
+}
+$("themeBtn").onclick=()=>{
+  const next=currentTheme()==="dark"?"light":"dark";
+  document.documentElement.setAttribute("data-theme",next);
+  try{localStorage.setItem("jp_cpm_theme",next);}catch(e){}
+  applyThemeIcon();
+};
+applyThemeIcon();
 $("cloudBtn").onclick=toggleCloud;
 $("statsToggle").onclick=()=>{
   const d=document.querySelector(".dash");

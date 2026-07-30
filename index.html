@@ -195,6 +195,18 @@
   .rv-jp rt{font-size:.5em;color:var(--muted);font-weight:400;}
   .rv-en{margin:0;color:var(--muted);font-size:14px;line-height:1.6;}
 
+  /* Listen / text-to-speech */
+  .listen{display:flex;flex-direction:column;gap:9px;margin:0 0 18px;padding:12px 14px;
+    background:var(--surface-2);border:1px solid var(--border);border-radius:10px;}
+  .listen-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .listen-btn.playing{color:#fff;background:var(--accent);border-color:var(--accent);}
+  .listen-status{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .listen-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
+  .listen-row label{font-weight:600;}
+  .listen-row input[type="range"]{flex:1;min-width:120px;accent-color:var(--accent);cursor:pointer;}
+  .listen-row .auto{display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:600;}
+  #ttsRateVal{font-variant-numeric:tabular-nums;min-width:40px;text-align:right;}
+
   /* Dashboard */
   .dash{margin-top:26px;}
   .dash h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
@@ -386,6 +398,18 @@
     <div class="quiz" id="quiz"></div>
     <div class="review" id="review">
       <div class="review-head">Check your understanding — original &amp; translation</div>
+      <div class="listen" id="listen">
+        <div class="listen-top">
+          <button class="btn btn-ghost btn-sm listen-btn" id="listenBtn" type="button">🔊 Hear it at ~200 CPM</button>
+          <span class="listen-status" id="listenStatus"></span>
+        </div>
+        <div class="listen-row">
+          <label for="ttsRate">Speed</label>
+          <input type="range" id="ttsRate" min="0.5" max="2" step="0.05" value="1" aria-label="Playback speed">
+          <span id="ttsRateVal">1.0×</span>
+          <label class="auto"><input type="checkbox" id="ttsAuto" checked> auto-tune to 200</label>
+        </div>
+      </div>
       <div id="reviewBody"></div>
     </div>
     <div class="reader-actions" style="margin-top:22px;">
@@ -701,6 +725,8 @@ function pickPassages(n){
 
 function newPassage(){
   stopTimer();
+  resetListen();
+  if($("listenStatus"))$("listenStatus").textContent="";
   running=false;
   current=pickPassages(lenCount);
   charTotal=current.reduce((s,p)=>s+countChars(p.j),0);
@@ -744,6 +770,62 @@ function startReading(){
 }
 
 function stopTimer(){if(tick){clearInterval(tick);tick=null;}}
+
+/* ---------- Listen (text-to-speech, aims ~200 CPM) ---------- */
+const TTS_RATE_LS="jp_cpm_ttsrate";
+let ttsVoice=null, ttsPlaying=false, ttsSeq=0, ttsStart=0;
+const ttsOK=("speechSynthesis" in window) && (typeof SpeechSynthesisUtterance!=="undefined");
+function clampRate(r){ r=parseFloat(r); if(!(r>=0.5&&r<=2)) r=1.0; return r; }
+function loadRate(){ return clampRate(localStorage.getItem(TTS_RATE_LS)); }
+function pickVoice(){
+  if(!ttsOK)return null;
+  const vs=speechSynthesis.getVoices()||[];
+  return vs.find(v=>/^ja(\b|[-_])/i.test(v.lang))||null;
+}
+function setListenUI(playing){
+  const b=$("listenBtn");
+  b.textContent=playing?"⏹ Stop":"🔊 Hear it at ~200 CPM";
+  b.classList.toggle("playing",playing);
+}
+function resetListen(){ if(ttsOK){ttsSeq++;try{speechSynthesis.cancel();}catch(e){}} ttsPlaying=false; if($("listenBtn"))setListenUI(false); }
+function stopSpeak(){ resetListen(); }
+function speakCurrent(){
+  if(!ttsOK){ showToast("This browser can't do text-to-speech."); return; }
+  if(ttsPlaying){ stopSpeak(); return; }
+  ttsVoice=ttsVoice||pickVoice();
+  if(!ttsVoice){ showToast("No Japanese voice is installed on this device."); $("listenStatus").textContent="no Japanese voice found"; return; }
+  const text=current.map(p=>toBase(p.j)).join("");
+  const parts=text.match(/[^。！？]+[。！？]?/g)||[text];
+  const rate=loadRate();
+  const seq=++ttsSeq;
+  try{speechSynthesis.cancel();}catch(e){}
+  ttsPlaying=true; setListenUI(true); $("listenStatus").textContent="playing…";
+  ttsStart=Date.now();
+  let done=0;
+  parts.forEach((part,i)=>{
+    const u=new SpeechSynthesisUtterance(part);
+    u.voice=ttsVoice; u.lang=(ttsVoice&&ttsVoice.lang)||"ja-JP"; u.rate=rate;
+    if(i===0) u.onstart=()=>{ if(seq===ttsSeq) ttsStart=Date.now(); };
+    const fin=()=>{ if(seq!==ttsSeq)return; done++; if(done>=parts.length) onSpeakEnd(seq); };
+    u.onend=fin; u.onerror=fin;
+    speechSynthesis.speak(u);
+  });
+}
+function onSpeakEnd(seq){
+  if(seq!==ttsSeq)return;
+  ttsPlaying=false; setListenUI(false);
+  const dur=(Date.now()-ttsStart)/1000;
+  if(dur>0.6 && charTotal>0){
+    const cpm=Math.round(charTotal/(dur/60));
+    $("listenStatus").textContent="that was ≈"+cpm+" CPM";
+    if($("ttsAuto").checked){
+      const r=clampRate(loadRate()*(200/cpm));
+      localStorage.setItem(TTS_RATE_LS, r.toFixed(3));
+      $("ttsRate").value=r; $("ttsRateVal").textContent=r.toFixed(2)+"×";
+    }
+  } else { $("listenStatus").textContent=""; }
+}
+if(ttsOK){ ttsVoice=pickVoice(); try{ speechSynthesis.onvoiceschanged=()=>{ ttsVoice=pickVoice(); }; }catch(e){} }
 
 function finishReading(){
   if(!running)return;
@@ -1112,6 +1194,14 @@ $("themeBtn").onclick=()=>{
   applyThemeIcon();
 };
 applyThemeIcon();
+$("listenBtn").onclick=speakCurrent;
+$("ttsRate").oninput=e=>{
+  const r=clampRate(e.target.value);
+  $("ttsRateVal").textContent=r.toFixed(2)+"×";
+  localStorage.setItem(TTS_RATE_LS,r);
+  $("ttsAuto").checked=false;   // manual speed = turn off auto-tune
+};
+(function(){const r=loadRate();$("ttsRate").value=r;$("ttsRateVal").textContent=r.toFixed(2)+"×";if(!ttsOK){$("listenBtn").disabled=true;$("listenStatus").textContent="text-to-speech not supported here";}})();
 $("cloudBtn").onclick=toggleCloud;
 $("statsToggle").onclick=()=>{
   const d=document.querySelector(".dash");

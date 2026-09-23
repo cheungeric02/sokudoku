@@ -2,7 +2,7 @@
    Strategy: network-first for the page (so my updates show up immediately when
    online), cache-first for static icons/manifest. Cross-origin requests
    (Firebase, gstatic) are never intercepted, so cloud sync is untouched. */
-const CACHE = 'sokudoku-v1';
+const CACHE = 'sokudoku-v6';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

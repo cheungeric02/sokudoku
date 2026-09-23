@@ -324,6 +324,52 @@
     .seg button{flex:1;}
     .passage{font-size:calc(2rem * var(--read-scale,1));}
   }
+  /* Library-progress card (how many passages completed) */
+  .lp-row{margin-bottom:14px;}
+  .lp-top{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;
+    font-weight:600;margin-bottom:6px;}
+  .lp-num{font-variant-numeric:tabular-nums;color:var(--muted);}
+  .lp-bar{height:8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);overflow:hidden;}
+  .lp-bar i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .4s;}
+  .lp-bar.full i{background:var(--good);}
+  .lp-note{font-size:11.5px;color:var(--good);font-weight:600;margin-top:5px;}
+
+  /* Patch notes entries — shared by the Settings list and the What's New popup */
+  .pn-entry{padding:13px 0;border-bottom:1px solid var(--border);}
+  .pn-entry:last-child{border-bottom:0;}
+  .pn-entry.current{background:var(--accent-soft);border-radius:11px;padding:13px 14px;
+    border-bottom:0;margin-bottom:8px;}
+  .pn-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+  .pn-v{font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent-ink);font-size:13px;}
+  .pn-title{font-weight:600;font-size:14px;}
+  .pn-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+    color:#fff;background:var(--accent);padding:2px 8px;border-radius:999px;}
+  .pn-date{font-size:11.5px;color:var(--muted);margin:3px 0 8px;font-variant-numeric:tabular-nums;}
+  .pn-notes{margin:0;padding-left:18px;}
+  .pn-notes li{font-size:13px;line-height:1.55;margin-bottom:3px;color:var(--text);}
+  .pn-cur{font-size:11.5px;color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums;}
+
+  /* What's New popup — reuses theme tokens so light/dark just works.
+     Hidden state gets pointer-events:none; only the visible scrim captures clicks. */
+  .modal-scrim{position:fixed;inset:0;z-index:100;display:flex;align-items:center;
+    justify-content:center;padding:20px;background:rgba(10,11,15,.55);
+    opacity:1;transition:opacity .2s;pointer-events:auto;}
+  .modal-scrim.hidden{opacity:0;pointer-events:none;}
+  .modal{background:var(--surface);color:var(--text);border:1px solid var(--border);
+    border-radius:16px;box-shadow:var(--shadow);max-width:440px;width:100%;
+    max-height:82vh;display:flex;flex-direction:column;overflow:hidden;
+    transform:translateY(0);transition:transform .2s;}
+  .modal-scrim.hidden .modal{transform:translateY(12px);}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;
+    padding:17px 20px;border-bottom:1px solid var(--border);}
+  .modal-head h2{margin:0;font-size:16px;}
+  .modal-x{background:transparent;border:0;color:var(--muted);font-size:18px;line-height:1;
+    cursor:pointer;padding:4px 6px;border-radius:8px;}
+  .modal-x:hover{color:var(--text);}
+  .modal-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .modal-body{padding:6px 20px 8px;overflow-y:auto;}
+  .modal-foot{padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;}
+
   /* Reading-first on phones AND the unfolded foldable/tablet screen: stats behind a toggle */
   @media (max-width:1024px){
     .stats-toggle{display:flex;align-items:center;justify-content:center;gap:8px;
@@ -439,6 +485,11 @@
       <div class="tile"><div class="k">Sessions</div><div class="v" id="tSessions">0</div></div>
     </div>
 
+    <div class="card chart-card lib-progress">
+      <div class="chart-head"><h3>Passages completed</h3></div>
+      <div id="libProgress"></div>
+    </div>
+
     <div class="card chart-card">
       <div class="chart-head">
         <h3>CPM over time</h3>
@@ -489,7 +540,23 @@
         </div>
       </div>
     </div>
+
+    <div class="card chart-card patch">
+      <div class="chart-head"><h3>Patch Notes</h3><span class="pn-cur" id="pnCur"></span></div>
+      <div id="patchList"></div>
+    </div>
   </section>
+</div>
+
+<div class="modal-scrim hidden" id="whatsNewScrim" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="wnTitle">
+    <div class="modal-head">
+      <h2 id="wnTitle">What's New</h2>
+      <button class="modal-x" id="wnClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" id="wnBody"></div>
+    <div class="modal-foot"><button class="btn btn-primary" id="wnOk" type="button">Got it</button></div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -723,15 +790,48 @@ const KEY="jp_cpm_history_v1";
 function loadHistory(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
 function saveHistory(h){try{localStorage.setItem(KEY,JSON.stringify(h))}catch(e){}}
 
+/* ---------- Version + patch notes ----------
+   APP_VERSION MUST equal the sw.js cache number (sokudoku-v6). Bump both together. */
+const APP_VERSION=6;
+const PATCH_NOTES=[
+ {v:6,date:"2026-09-23",title:"No more repeats + progress tracker",notes:[
+   "Passages you've finished won't come back until you've read every one in that level — then the library cycles again.",
+   "New \"Passages completed\" tracker in your progress panel, with a bar per level and a \"Start the library over\" button.",
+   "Added this Patch Notes list and a one-time \"What's New\" popup so you can see what changed."]},
+ {v:5,date:"2026-08-08",title:"Install as an app + text size + Fold layout",notes:[
+   "Install 速読 to your home screen and read offline.",
+   "A− / A+ buttons to make just the reading text smaller or larger.",
+   "Reading-first layout tuned for both the folded and unfolded screens."]},
+ {v:4,date:"2026-07-30",title:"Listen aloud",notes:[
+   "New 🔊 button reads the passage out loud, auto-tuned toward ~200 CPM, with a manual speed slider."]},
+ {v:3,date:"2026-07-28",title:"Bigger library",notes:[
+   "Added 20 more passages (N5–N4 and N3), each with a translation and comprehension check."]},
+ {v:2,date:"2026-07-28",title:"Dark mode",notes:[
+   "Added a light / dark theme toggle that remembers your choice."]},
+ {v:1,date:"2026-07-28",title:"First release",notes:[
+   "Timed Japanese reading with furigana, CPM scoring, comprehension checks, history charts, and cross-device cloud sync."]}
+];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* ---------- Completed-passage tracking (per device, so you don't see repeats) ---------- */
+const SEEN_LS="sokudoku_seen_v1";
+function getSeen(){try{const o=JSON.parse(localStorage.getItem(SEEN_LS));return (o&&typeof o==="object"&&!Array.isArray(o))?o:{};}catch(e){return{};}}
+function saveSeen(o){try{localStorage.setItem(SEEN_LS,JSON.stringify(o));}catch(e){}}
+function markSeen(lvl,indices){const o=getSeen();const set=new Set(o[lvl]||[]);indices.forEach(i=>{if(typeof i==="number")set.add(i);});o[lvl]=[...set];saveSeen(o);}
+
 /* ---------- State ---------- */
 let lenCount=1, current=[], charTotal=0, startTime=0, tick=null, running=false;
 let targetSecs=0, pendingIdx=-1, quizState=[];
 
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function pickPassages(n){
   const lib=LEVELS[activeLevel].lib;
-  const idx=[...lib.keys()];
-  for(let i=idx.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
-  return idx.slice(0,Math.min(n,lib.length)).map(i=>lib[i]);
+  const doneSet=new Set(getSeen()[activeLevel]||[]);
+  // Prefer passages you haven't finished yet; only reuse finished ones once the pool runs out.
+  const unseen=shuffle([...lib.keys()].filter(i=>!doneSet.has(i)));
+  const seen=shuffle([...lib.keys()].filter(i=>doneSet.has(i)));
+  const order=unseen.concat(seen);
+  return order.slice(0,Math.min(n,lib.length)).map(i=>Object.assign({},lib[i],{_idx:i}));
 }
 
 function newPassage(){
@@ -856,6 +956,7 @@ function finishReading(){
   hist.push({t:Date.now(),cpm,chars:charTotal,secs:+secs.toFixed(1),furi:$("furiToggle").checked,len:lenCount,level:activeLevel,comp:null});
   saveHistory(hist);
   cloudPush();
+  markSeen(activeLevel,current.map(p=>p._idx));
   pendingIdx=hist.length-1;
   showResult(cpm,secs,prevBest);
   buildQuiz();
@@ -987,6 +1088,85 @@ function renderDashboard(){
   $("tSessions").textContent=hist.length;
   renderChart(hist);
   renderHistList(hist);
+  renderProgress();
+}
+
+/* Shared patch-notes entry markup — used by both the Settings list and the popup */
+function patchEntryHtml(e,isCurrent){
+  const notes=(e.notes||[]).map(n=>"<li>"+esc(n)+"</li>").join("");
+  return '<div class="pn-entry'+(isCurrent?' current':'')+'">'+
+    '<div class="pn-top"><span class="pn-v">v'+esc(String(e.v))+'</span>'+
+    '<span class="pn-title">'+esc(e.title)+'</span>'+
+    (isCurrent?'<span class="pn-badge">current</span>':'')+'</div>'+
+    '<div class="pn-date">'+esc(e.date)+'</div>'+
+    '<ul class="pn-notes">'+notes+'</ul></div>';
+}
+
+function renderPatchNotes(){
+  const cur=PATCH_NOTES[0].v;
+  if($("pnCur"))$("pnCur").textContent="Current: v"+cur;
+  if($("patchList"))$("patchList").innerHTML=PATCH_NOTES.map(e=>patchEntryHtml(e,e.v===cur)).join("");
+}
+
+function renderProgress(){
+  const el=$("libProgress");if(!el)return;
+  const seen=getSeen();
+  el.innerHTML=Object.keys(LEVELS).map(k=>{
+    const total=LEVELS[k].lib.length;
+    const done=Math.min(total,(seen[k]||[]).filter(i=>i<total).length);
+    const pct=total?Math.round(done/total*100):0;
+    const full=done>=total&&total>0;
+    return '<div class="lp-row">'+
+      '<div class="lp-top"><span>'+esc(LEVELS[k].label)+'</span>'+
+      '<span class="lp-num">'+done+' / '+total+(full?' ✓':'')+'</span></div>'+
+      '<div class="lp-bar'+(full?' full':'')+'"><i style="width:'+pct+'%"></i></div>'+
+      (full?'<div class="lp-note">You’ve read every passage — they’ll now cycle again.</div>':'')+
+      '</div>';
+  }).join("")+
+    '<button class="btn btn-ghost btn-sm" id="resetSeen" type="button" style="margin-top:6px;">Start the library over</button>';
+  const rb=$("resetSeen");
+  if(rb)rb.onclick=()=>{
+    if(confirm("Reset which passages you've completed? This only affects which ones you'll be shown next — your CPM history stays.")){
+      saveSeen({});renderProgress();showToast("Passage progress reset.");
+    }
+  };
+}
+
+/* ---------- What's New popup ---------- */
+const VER_LS="sokudoku_lastSeenVer";
+function isFreshInstall(){
+  try{
+    return !localStorage.getItem(KEY)&&!localStorage.getItem(VER_LS)&&
+      !localStorage.getItem("jp_cpm_theme")&&!localStorage.getItem(SEEN_LS)&&
+      !localStorage.getItem("jp_cpm_synckey")&&!localStorage.getItem("jp_cpm_readscale");
+  }catch(e){return false;}
+}
+function showWhatsNew(entries){
+  const cur=PATCH_NOTES[0].v;
+  $("wnBody").innerHTML=entries.map(e=>patchEntryHtml(e,e.v===cur)).join("");
+  const s=$("whatsNewScrim");
+  s.classList.remove("hidden");s.setAttribute("aria-hidden","false");
+  // Record it as seen the moment it's shown, so it appears exactly once.
+  try{localStorage.setItem(VER_LS,String(APP_VERSION));}catch(e){}
+}
+function closeWhatsNew(){
+  const s=$("whatsNewScrim");
+  s.classList.add("hidden");s.setAttribute("aria-hidden","true");
+}
+function whatsNewCheck(){
+  let seen=null;
+  try{const raw=localStorage.getItem(VER_LS);seen=(raw==null)?null:parseInt(raw,10);}catch(e){seen=null;}
+  if(seen!==null&&isNaN(seen))seen=null;
+  if(seen===null&&isFreshInstall()){
+    try{localStorage.setItem(VER_LS,String(APP_VERSION));}catch(e){} // brand-new install: record silently
+    return;
+  }
+  let toShow;
+  if(seen===null){toShow=[PATCH_NOTES[0]];}                       // existing pre-feature user → latest only
+  else if(seen<APP_VERSION){toShow=PATCH_NOTES.filter(e=>e.v>seen);} // returning user → the delta
+  else{return;}                                                    // up to date
+  if(!toShow||!toShow.length){try{localStorage.setItem(VER_LS,String(APP_VERSION));}catch(e){}return;}
+  showWhatsNew(toShow);
 }
 
 function renderChart(hist){
@@ -1249,10 +1429,18 @@ setTimeout(()=>{
   }
 },1800);
 
+/* What's New popup handlers */
+$("wnClose").onclick=closeWhatsNew;
+$("wnOk").onclick=closeWhatsNew;
+$("whatsNewScrim").addEventListener("click",e=>{ if(e.target===$("whatsNewScrim"))closeWhatsNew(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!$("whatsNewScrim").classList.contains("hidden"))closeWhatsNew(); });
+
 // init
 $("passage").classList.toggle("hide-furi",!$("furiToggle").checked);
 newPassage();
+renderPatchNotes();
 renderDashboard();
+whatsNewCheck();   // once, after the normal load/render is done
 </script>
 
 <!-- ============================================================

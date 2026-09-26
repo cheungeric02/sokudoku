@@ -11,7 +11,7 @@
    to BYPASS the browser HTTP cache — GitHub Pages serves the shell with
    max-age=600, which would otherwise keep handing us stale bytes and stop the
    cache from ever catching up to a new deploy. */
-const CACHE = 'sokudoku-v8';
+const CACHE = 'sokudoku-v9';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
